@@ -4,7 +4,20 @@
       "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir=false --import-alias=\"@/*\" --turbopack --use-npm)",
       "Bash(mkdir -p /tmp/quiz-init)",
       "Bash(mv C:/quiz-app/INITIAL_PROMPT.MD.bak /tmp/quiz-init/)",
-      "Bash(npx shadcn@latest init -d)"
+      "Bash(npx shadcn@latest init -d)",
+      "Bash(npx shadcn@latest add card input label dialog sonner skeleton badge separator tabs table form textarea select -y)",
+      "Bash(npx shadcn@latest add form -y)",
+      "Bash(npx supabase:*)",
+      "Bash(node -e \"const z = require\\('zod'\\); console.log\\(z.version || 'no version prop'\\)\")",
+      "Bash(npm ls:*)",
+      "Bash(node -e \"try { require\\('@hookform/resolvers/zod'\\); console.log\\('ok'\\) } catch\\(e\\) { console.log\\(e.message\\) }\")",
+      "Bash(mkdir -p \"C:/quiz-app/app/dashboard/quiz/[quizId]/edit\")",
+      "Bash(mkdir -p \"C:/quiz-app/app/dashboard/quiz/[quizId]/session/[sessionId]/results\")",
+      "Bash(mkdir -p \"C:/quiz-app/app/play/[sessionId]\")",
+      "Bash(npx next:*)",
+      "Bash(node -e ':*)",
+      "Bash(npx tsc:*)",
+      "Bash(grep \"__InternalSupabase\" node_modules/@supabase/supabase-js/dist/main/*.d.ts)"
     ]
   }
 }
