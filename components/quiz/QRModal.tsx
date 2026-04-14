@@ -17,7 +17,11 @@ interface QRModalProps {
 }
 
 export function QRModal({ sessionId, trigger }: QRModalProps) {
-  const joinUrl = `${process.env.NEXT_PUBLIC_APP_URL}/play/${sessionId}`;
+  const base =
+    typeof window !== "undefined"
+      ? window.location.origin
+      : (process.env.NEXT_PUBLIC_APP_URL ?? "");
+  const joinUrl = `${base}/play/${sessionId}`;
 
   return (
     <Dialog>

@@ -13,6 +13,7 @@ import { PlayerList } from "@/components/session/PlayerList";
 import { AnswerStats } from "@/components/session/AnswerStats";
 import { QRModal } from "@/components/quiz/QRModal";
 import type { Player, Question, QuizSession } from "@/types";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +33,21 @@ export default function HostDashboardPage() {
 
   // Track if we're currently advancing to prevent double-fires
   const advancingRef = useRef(false);
+
+  // Persistent broadcast channel — must be subscribed before we can send
+  const broadcastChannelRef = useRef<RealtimeChannel | null>(null);
+
+  useEffect(() => {
+    const supabase = getSupabaseBrowserClient();
+    const channel = supabase.channel(`quiz:${params.sessionId}`);
+    channel.subscribe();
+    broadcastChannelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+      broadcastChannelRef.current = null;
+    };
+  }, [params.sessionId]);
 
   const fetchData = useCallback(async () => {
     const supabase = getSupabaseBrowserClient();
@@ -112,18 +128,18 @@ export default function HostDashboardPage() {
         return;
       }
 
-      // Broadcast to all players
-      const channel = supabase.channel(`quiz:${params.sessionId}`);
-      await channel.send({
-        type: "broadcast",
-        event: "next_question",
-        payload: {
-          questionIndex: nextIndex,
-          questionStartedAt: now,
-          timeLimitSeconds: nextQuestion.time_limit_seconds,
-        },
-      });
-      supabase.removeChannel(channel);
+      // Broadcast to all players via persistent channel
+      if (broadcastChannelRef.current) {
+        await broadcastChannelRef.current.send({
+          type: "broadcast",
+          event: "next_question",
+          payload: {
+            questionIndex: nextIndex,
+            questionStartedAt: now,
+            timeLimitSeconds: nextQuestion.time_limit_seconds,
+          },
+        });
+      }
 
       // Update local state
       setSession((prev) =>
@@ -149,13 +165,14 @@ export default function HostDashboardPage() {
         })
         .eq("id", params.sessionId);
 
-      const channel = supabase.channel(`quiz:${params.sessionId}`);
-      await channel.send({
-        type: "broadcast",
-        event: "quiz_end",
-        payload: {},
-      });
-      supabase.removeChannel(channel);
+      // Broadcast quiz_end via persistent channel
+      if (broadcastChannelRef.current) {
+        await broadcastChannelRef.current.send({
+          type: "broadcast",
+          event: "quiz_end",
+          payload: {},
+        });
+      }
 
       setSession((prev) =>
         prev ? { ...prev, status: "ended", question_started_at: null } : prev
@@ -235,18 +252,18 @@ export default function HostDashboardPage() {
       return;
     }
 
-    // Broadcast quiz_start
-    const channel = supabase.channel(`quiz:${params.sessionId}`);
-    await channel.send({
-      type: "broadcast",
-      event: "quiz_start",
-      payload: {
-        questionIndex: 0,
-        questionStartedAt: now,
-        timeLimitSeconds: questions[0].time_limit_seconds,
-      },
-    });
-    supabase.removeChannel(channel);
+    // Broadcast quiz_start via persistent channel
+    if (broadcastChannelRef.current) {
+      await broadcastChannelRef.current.send({
+        type: "broadcast",
+        event: "quiz_start",
+        payload: {
+          questionIndex: 0,
+          questionStartedAt: now,
+          timeLimitSeconds: questions[0].time_limit_seconds,
+        },
+      });
+    }
 
     setSession((prev) =>
       prev
@@ -275,13 +292,13 @@ export default function HostDashboardPage() {
       })
       .eq("id", params.sessionId);
 
-    const channel = supabase.channel(`quiz:${params.sessionId}`);
-    await channel.send({
-      type: "broadcast",
-      event: "quiz_end",
-      payload: {},
-    });
-    supabase.removeChannel(channel);
+    if (broadcastChannelRef.current) {
+      await broadcastChannelRef.current.send({
+        type: "broadcast",
+        event: "quiz_end",
+        payload: {},
+      });
+    }
 
     setSession((prev) =>
       prev ? { ...prev, status: "ended", question_started_at: null } : prev
@@ -354,55 +371,97 @@ export default function HostDashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Current question info */}
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              {session.status === "active" && currentQuestion
-                ? `Question ${session.current_question_index + 1} of ${questions.length}`
-                : session.status === "waiting"
-                  ? "Waiting to Start"
-                  : "Quiz Ended"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {session.status === "active" && currentQuestion && (
-              <>
-                <p className="text-lg font-medium">{currentQuestion.text}</p>
+      {/* ── Active quiz: full-width question display for screen sharing ── */}
+      {session.status === "active" && currentQuestion ? (
+        <div className="space-y-4">
+          {/* Timer bar */}
+          <div className="space-y-1">
+            <div className="w-full h-4 bg-muted rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${timerColor}`}
+                style={{ width: `${Math.max(0, fraction * 100)}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>
+                Question {session.current_question_index + 1} of {questions.length}
+              </span>
+              <span className="tabular-nums font-medium">{Math.ceil(remaining)}s</span>
+            </div>
+          </div>
 
-                {/* Timer bar */}
-                <div className="space-y-1">
-                  <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${timerColor}`}
-                      style={{ width: `${Math.max(0, fraction * 100)}%` }}
-                    />
-                  </div>
-                  <p className="text-sm text-muted-foreground text-right tabular-nums">
-                    {Math.ceil(remaining)}s
-                  </p>
-                </div>
+          {/* Question text */}
+          <Card>
+            <CardContent className="py-8">
+              <p className="text-2xl font-bold text-center">{currentQuestion.text}</p>
+            </CardContent>
+          </Card>
 
+          {/* Answer options — no correct highlight during quiz */}
+          <div className="grid grid-cols-2 gap-3">
+            {(currentQuestion.answers as string[]).map((answer, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-3 p-4 rounded-lg border-2 border-border bg-muted text-foreground font-semibold text-lg min-h-[64px]"
+              >
+                <span className="flex-shrink-0 w-8 h-8 rounded-full bg-background border-2 border-border flex items-center justify-center text-sm font-bold">
+                  {String.fromCharCode(65 + i)}
+                </span>
+                <span>{answer}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Stats row */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardContent className="py-4">
                 <AnswerStats
                   submittedCount={answerCount}
                   totalPlayers={players.length}
                 />
-              </>
-            )}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Players ({players.length})</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <PlayerList players={players} />
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Waiting / Ended state */}
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                {session.status === "waiting" ? "Waiting to Start" : "Quiz Ended"}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {session.status === "waiting" && (
+                <p className="text-muted-foreground text-sm">
+                  {players.length === 0
+                    ? "Share the QR code so players can join."
+                    : `${players.length} player${players.length === 1 ? "" : "s"} ready.`}
+                </p>
+              )}
+            </CardContent>
+          </Card>
 
-        {/* Player list */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Players</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <PlayerList players={players} />
-          </CardContent>
-        </Card>
-      </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Players ({players.length})</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PlayerList players={players} />
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

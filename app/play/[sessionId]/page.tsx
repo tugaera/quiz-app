@@ -154,6 +154,54 @@ export default function PlayPage() {
     },
   });
 
+  // Polling fallback: if we're waiting/between_questions, poll session state
+  // every 3 seconds in case a broadcast was missed
+  useEffect(() => {
+    if (phase !== "waiting" && phase !== "between_questions") return;
+    if (!playerId) return;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/session/${sessionId}/state`);
+        const json = await res.json();
+        if (!json.data) return;
+
+        const s = json.data as {
+          status: string;
+          currentQuestionIndex: number;
+          questionStartedAt: string | null;
+          timeLimitSeconds: number | null;
+        };
+
+        if (s.status === "ended") {
+          setPhase("ended");
+          return;
+        }
+
+        if (
+          s.status === "active" &&
+          s.questionStartedAt &&
+          s.questionStartedAt !== questionStartedAt
+        ) {
+          // A new question started that we missed via broadcast
+          if (questions.length === 0) await fetchQuestions();
+          setCurrentIndex(s.currentQuestionIndex);
+          setQuestionStartedAt(s.questionStartedAt);
+          setTimeLimitSeconds(s.timeLimitSeconds);
+          setSelectedAnswer(null);
+          setAnswerLocked(false);
+          submittedRef.current = false;
+          setPhase("playing");
+        }
+      } catch {
+        // ignore polling errors
+      }
+    };
+
+    const interval = setInterval(poll, 3000);
+    return () => clearInterval(interval);
+  }, [phase, playerId, sessionId, questionStartedAt, questions.length, fetchQuestions]);
+
   // Submit answer when timer expires — uses API route so no auth is required
   const handleTimerExpired = useCallback(async () => {
     if (submittedRef.current || !playerId) return;
