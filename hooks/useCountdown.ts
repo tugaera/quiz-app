@@ -13,15 +13,31 @@ type CountdownState = {
   isExpired: boolean;
 };
 
+function computeState(
+  questionStartedAt: string | null,
+  timeLimitSeconds: number | null
+): CountdownState {
+  if (!questionStartedAt || !timeLimitSeconds) {
+    return { remaining: 0, fraction: 0, isExpired: false };
+  }
+  const deadline =
+    new Date(questionStartedAt).getTime() + timeLimitSeconds * 1000;
+  const remainingMs = Math.max(0, deadline - Date.now());
+  return {
+    remaining: remainingMs / 1000,
+    fraction: Math.min(1, remainingMs / (timeLimitSeconds * 1000)),
+    isExpired: remainingMs <= 0,
+  };
+}
+
 export function useCountdown(
   questionStartedAt: string | null,
   timeLimitSeconds: number | null
 ): CountdownState {
-  const [state, setState] = useState<CountdownState>({
-    remaining: timeLimitSeconds ?? 0,
-    fraction: 1,
-    isExpired: false,
-  });
+  // Compute initial state from reality, not a hardcoded default
+  const [state, setState] = useState<CountdownState>(() =>
+    computeState(questionStartedAt, timeLimitSeconds)
+  );
   const rafRef = useRef<number>(0);
 
   const tick = useCallback(() => {
@@ -31,12 +47,10 @@ export function useCountdown(
       new Date(questionStartedAt).getTime() + timeLimitSeconds * 1000;
     const now = Date.now();
     const remainingMs = Math.max(0, deadline - now);
-    const remainingSec = remainingMs / 1000;
-    const fraction = remainingMs / (timeLimitSeconds * 1000);
 
     setState({
-      remaining: remainingSec,
-      fraction,
+      remaining: remainingMs / 1000,
+      fraction: Math.min(1, remainingMs / (timeLimitSeconds * 1000)),
       isExpired: remainingMs <= 0,
     });
 
@@ -47,14 +61,18 @@ export function useCountdown(
 
   useEffect(() => {
     if (!questionStartedAt || !timeLimitSeconds) {
-      // Timer is inactive — do NOT set isExpired to true here,
-      // otherwise onExpired callbacks will fire spuriously.
       setState({ remaining: 0, fraction: 0, isExpired: false });
       return;
     }
 
-    // Start the animation loop
-    rafRef.current = requestAnimationFrame(tick);
+    // Immediately compute the real state (important for SSR → client handoff)
+    const initial = computeState(questionStartedAt, timeLimitSeconds);
+    setState(initial);
+
+    // Only start the RAF loop if there's time remaining
+    if (!initial.isExpired) {
+      rafRef.current = requestAnimationFrame(tick);
+    }
 
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);

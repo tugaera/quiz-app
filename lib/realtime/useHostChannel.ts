@@ -1,8 +1,10 @@
 // lib/realtime/useHostChannel.ts — Host-side realtime subscriptions
+// Returns a channel ref that can also be used for broadcasting.
 "use client";
 
 import { useEffect, useRef } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { Player, Answer } from "@/types";
 import type { QuestionEventPayload } from "@/types/realtime";
 
@@ -17,9 +19,11 @@ type HostChannelCallbacks = {
 export function useHostChannel(
   sessionId: string,
   callbacks: HostChannelCallbacks
-) {
+): React.RefObject<RealtimeChannel | null> {
   const cbRef = useRef(callbacks);
   cbRef.current = callbacks;
+
+  const channelRef = useRef<RealtimeChannel | null>(null);
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
@@ -47,22 +51,18 @@ export function useHostChannel(
           cbRef.current.onPlayerJoined?.(payload.new as Player);
         }
       )
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "answers",
-          filter: `session_id=eq.${sessionId}`,
-        },
-        (payload) => {
-          cbRef.current.onAnswerSubmitted?.(payload.new as Answer);
-        }
-      )
+      .on("broadcast", { event: "answer_submitted" }, () => {
+        cbRef.current.onAnswerSubmitted?.({} as Answer);
+      })
       .subscribe();
+
+    channelRef.current = channel;
 
     return () => {
       supabase.removeChannel(channel);
+      channelRef.current = null;
     };
   }, [sessionId]);
+
+  return channelRef;
 }

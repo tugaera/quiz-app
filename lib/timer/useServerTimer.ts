@@ -19,33 +19,40 @@ export function useServerTimer({
 
   // Track which questionStartedAt we already fired onExpired for.
   const firedForRef = useRef<string | null>(null);
-  // Track whether we've seen a non-expired state for the current question.
-  // This prevents stale isExpired=true from a previous question
-  // from immediately firing onExpired for the new question.
-  const sawRunningRef = useRef(false);
 
-  // When questionStartedAt changes, reset the "saw running" flag
+  // Generation counter: increments each time questionStartedAt changes.
+  // We defer firing onExpired by a short timeout and verify the generation
+  // hasn't changed — this prevents stale isExpired=true from a previous
+  // question triggering onExpired for the new question.
+  const generationRef = useRef(0);
+
   useEffect(() => {
-    sawRunningRef.current = false;
+    generationRef.current += 1;
   }, [questionStartedAt]);
 
   useEffect(() => {
-    // Once we see isExpired=false for the current question, mark it as "running"
-    if (!countdown.isExpired && questionStartedAt) {
-      sawRunningRef.current = true;
+    if (
+      !countdown.isExpired ||
+      !questionStartedAt ||
+      !timeLimitSeconds ||
+      firedForRef.current === questionStartedAt ||
+      !onExpired
+    ) {
+      return;
     }
 
-    if (
-      countdown.isExpired &&
-      sawRunningRef.current &&
-      questionStartedAt &&
-      timeLimitSeconds &&
-      firedForRef.current !== questionStartedAt &&
-      onExpired
-    ) {
+    const gen = generationRef.current;
+
+    // Short defer: lets React flush the countdown state update after
+    // a questionStartedAt change before we check isExpired.
+    const timer = setTimeout(() => {
+      if (generationRef.current !== gen) return; // questionStartedAt changed
+      if (firedForRef.current === questionStartedAt) return; // already fired
       firedForRef.current = questionStartedAt;
       onExpired();
-    }
+    }, 100);
+
+    return () => clearTimeout(timer);
   }, [countdown.isExpired, questionStartedAt, timeLimitSeconds, onExpired]);
 
   return countdown;

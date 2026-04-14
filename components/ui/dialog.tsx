@@ -11,8 +11,18 @@ function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
 }
 
-function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
-  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
+function DialogTrigger({ render, children, ...props }: DialogPrimitive.Trigger.Props) {
+  // If a render prop is provided use it (merges trigger onto the element).
+  // Otherwise default to a plain button so callers can pass styled children.
+  return (
+    <DialogPrimitive.Trigger
+      data-slot="dialog-trigger"
+      render={render ?? <button type="button" />}
+      {...props}
+    >
+      {children}
+    </DialogPrimitive.Trigger>
+  )
 }
 
 function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {

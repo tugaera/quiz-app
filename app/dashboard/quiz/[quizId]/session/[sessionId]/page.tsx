@@ -13,11 +13,13 @@ import { PlayerList } from "@/components/session/PlayerList";
 import { AnswerStats } from "@/components/session/AnswerStats";
 import { QRModal } from "@/components/quiz/QRModal";
 import type { Player, Question, QuizSession } from "@/types";
-import type { RealtimeChannel } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+
+// Gap between questions — players see "Answer submitted!" during this pause
+const QUESTION_GAP_MS = 5000;
 
 export default function HostDashboardPage() {
   const params = useParams<{ quizId: string; sessionId: string }>();
@@ -33,21 +35,6 @@ export default function HostDashboardPage() {
 
   // Track if we're currently advancing to prevent double-fires
   const advancingRef = useRef(false);
-
-  // Persistent broadcast channel — must be subscribed before we can send
-  const broadcastChannelRef = useRef<RealtimeChannel | null>(null);
-
-  useEffect(() => {
-    const supabase = getSupabaseBrowserClient();
-    const channel = supabase.channel(`quiz:${params.sessionId}`);
-    channel.subscribe();
-    broadcastChannelRef.current = channel;
-
-    return () => {
-      supabase.removeChannel(channel);
-      broadcastChannelRef.current = null;
-    };
-  }, [params.sessionId]);
 
   const fetchData = useCallback(async () => {
     const supabase = getSupabaseBrowserClient();
@@ -99,11 +86,15 @@ export default function HostDashboardPage() {
   }, [fetchData]);
 
   // ─── Auto-advance when timer expires ─────────────────────────
-  // The host dashboard is the authority for advancing questions.
-  // When the timer hits 0, we update the DB and broadcast the event.
+  // When the timer hits 0, wait QUESTION_GAP_MS (5s) so players see
+  // "Answer submitted!", then advance to the next question with a fresh
+  // timestamp so the timer starts immediately when the question appears.
   const advanceToNextQuestion = useCallback(async () => {
     if (!session || session.status !== "active" || advancingRef.current) return;
     advancingRef.current = true;
+
+    // Wait for the gap — players see "Answer submitted!" during this time
+    await new Promise((r) => setTimeout(r, QUESTION_GAP_MS));
 
     const supabase = getSupabaseBrowserClient();
     const nextIndex = session.current_question_index + 1;
@@ -196,7 +187,8 @@ export default function HostDashboardPage() {
   });
 
   // ─── Realtime subscriptions ──────────────────────────────────
-  useHostChannel(params.sessionId, {
+  // useHostChannel returns a ref to the subscribed channel for broadcasting
+  const broadcastChannelRef = useHostChannel(params.sessionId, {
     onNextQuestion: (payload) => {
       // Another source (Edge Function) advanced the question
       setSession((prev) =>
@@ -235,14 +227,14 @@ export default function HostDashboardPage() {
     setStarting(true);
 
     const supabase = getSupabaseBrowserClient();
-    const now = new Date().toISOString();
+    const startAt = new Date().toISOString();
 
     const { error } = await supabase
       .from("quiz_sessions")
       .update({
         status: "active",
         current_question_index: 0,
-        question_started_at: now,
+        question_started_at: startAt,
       })
       .eq("id", params.sessionId);
 
@@ -259,7 +251,7 @@ export default function HostDashboardPage() {
         event: "quiz_start",
         payload: {
           questionIndex: 0,
-          questionStartedAt: now,
+          questionStartedAt: startAt,
           timeLimitSeconds: questions[0].time_limit_seconds,
         },
       });
@@ -271,7 +263,7 @@ export default function HostDashboardPage() {
             ...prev,
             status: "active",
             current_question_index: 0,
-            question_started_at: now,
+            question_started_at: startAt,
           }
         : prev
     );

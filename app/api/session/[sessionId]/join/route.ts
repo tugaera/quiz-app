@@ -11,6 +11,7 @@ export async function POST(
   const { sessionId } = await params;
   const body = await request.json();
   const nickname: string = body.nickname?.trim();
+  const existingPlayerId: string | undefined = body.playerId;
 
   if (!nickname) {
     return NextResponse.json(
@@ -42,6 +43,29 @@ export async function POST(
     );
   }
 
+  // If the client already has a playerId (from sessionStorage), verify it still exists
+  if (existingPlayerId) {
+    const { data: existing } = await admin
+      .from("players")
+      .select("*")
+      .eq("id", existingPlayerId)
+      .eq("session_id", sessionId)
+      .single();
+
+    if (existing) {
+      // Player already exists — rejoin
+      const { data: players } = await admin
+        .from("players")
+        .select("*")
+        .eq("session_id", sessionId);
+
+      return NextResponse.json({
+        data: { player: existing, players: players ?? [], rejoined: true },
+        error: null,
+      });
+    }
+  }
+
   // Insert the player (user_id is null for anonymous players)
   const { data: player, error } = await admin
     .from("players")
@@ -67,7 +91,7 @@ export async function POST(
     .eq("session_id", sessionId);
 
   return NextResponse.json({
-    data: { player, players: players ?? [] },
+    data: { player, players: players ?? [], rejoined: false },
     error: null,
   });
 }

@@ -1,8 +1,10 @@
 // lib/realtime/usePlayerChannel.ts — Player-side realtime subscriptions
+// Returns a channel ref that can be used for broadcasting (e.g. answer_submitted).
 "use client";
 
 import { useEffect, useRef } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { Player } from "@/types";
 import type { QuestionEventPayload } from "@/types/realtime";
 
@@ -16,10 +18,12 @@ type PlayerChannelCallbacks = {
 export function usePlayerChannel(
   sessionId: string,
   callbacks: PlayerChannelCallbacks
-) {
+): React.RefObject<RealtimeChannel | null> {
   // Use ref to avoid re-subscribing when callbacks change
   const cbRef = useRef(callbacks);
   cbRef.current = callbacks;
+
+  const channelRef = useRef<RealtimeChannel | null>(null);
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
@@ -49,8 +53,13 @@ export function usePlayerChannel(
       )
       .subscribe();
 
+    channelRef.current = channel;
+
     return () => {
       supabase.removeChannel(channel);
+      channelRef.current = null;
     };
   }, [sessionId]);
+
+  return channelRef;
 }

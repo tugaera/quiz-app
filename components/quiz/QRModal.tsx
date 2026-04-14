@@ -25,8 +25,8 @@ export function QRModal({ sessionId, trigger }: QRModalProps) {
 
   return (
     <Dialog>
-      <DialogTrigger>
-        {trigger ?? <Button variant="outline">Show QR Code</Button>}
+      <DialogTrigger render={<Button variant="outline" />}>
+        {trigger ?? "Show QR Code"}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
