@@ -88,6 +88,8 @@ export type SessionState = {
   questionStartedAt: string | null;
   timeLimitSeconds: number | null;
   alreadyAnswered: boolean;
+  /** Server epoch ms when this payload was generated — sync device skew for countdowns */
+  serverNow?: number;
 };
 
 /** Standard API response wrapper */

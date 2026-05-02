@@ -7,15 +7,17 @@ import { useCountdown } from "@/hooks/useCountdown";
 type UseServerTimerOptions = {
   questionStartedAt: string | null;
   timeLimitSeconds: number | null;
+  clockSkewMs?: number;
   onExpired?: () => void;
 };
 
 export function useServerTimer({
   questionStartedAt,
   timeLimitSeconds,
+  clockSkewMs = 0,
   onExpired,
 }: UseServerTimerOptions) {
-  const countdown = useCountdown(questionStartedAt, timeLimitSeconds);
+  const countdown = useCountdown(questionStartedAt, timeLimitSeconds, clockSkewMs);
 
   // Track which questionStartedAt we already fired onExpired for.
   const firedForRef = useRef<string | null>(null);

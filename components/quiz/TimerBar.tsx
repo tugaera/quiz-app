@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 interface TimerBarProps {
   questionStartedAt: string | null;
   timeLimitSeconds: number | null;
+  /** estimatedServerNow − Date.now(); from GET .../state `serverNow` */
+  clockSkewMs?: number;
   onExpired?: () => void;
   className?: string;
 }
@@ -14,12 +16,14 @@ interface TimerBarProps {
 export function TimerBar({
   questionStartedAt,
   timeLimitSeconds,
+  clockSkewMs = 0,
   onExpired,
   className,
 }: TimerBarProps) {
   const { remaining, fraction } = useServerTimer({
     questionStartedAt,
     timeLimitSeconds,
+    clockSkewMs,
     onExpired,
   });
 

@@ -94,8 +94,12 @@ export default function PlayPage() {
   const [timeLimitSeconds, setTimeLimitSeconds] = useState<number | null>(null);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [answerLocked, setAnswerLocked] = useState(false);
+  /** Align with API server clock so wrong phone system time can't zero the timer instantly */
+  const [clockSkewMs, setClockSkewMs] = useState(0);
 
   const submittedRef = useRef(false);
+  const clockSkewMsRef = useRef(0);
+  clockSkewMsRef.current = clockSkewMs;
 
   // ─── Fetch questions ──────────────────────────────────────
   const fetchQuestions = useCallback(async () => {
@@ -122,12 +126,17 @@ export default function PlayPage() {
     try {
       const res = await fetch(`/api/session/${sessionId}/state`);
       const json = await res.json();
-      return json.data as {
+      const data = json.data as {
         status: string;
         currentQuestionIndex: number;
         questionStartedAt: string | null;
         timeLimitSeconds: number | null;
+        serverNow?: number;
       } | null;
+      if (data?.serverNow != null) {
+        setClockSkewMs(data.serverNow - Date.now());
+      }
+      return data;
     } catch {
       return null;
     }
@@ -268,7 +277,10 @@ export default function PlayPage() {
 
   // ─── Handle broadcast: question event ─────────────────────
   const handleQuestionEvent = useCallback(
-    (payload: QuestionEventPayload) => {
+    async (payload: QuestionEventPayload) => {
+      // Refresh server clock skew before showing the timer (fixes fast phones vs server)
+      await fetchSessionState();
+
       // Reset answer state for the new question
       setSelectedAnswer(null);
       setAnswerLocked(false);
@@ -285,7 +297,7 @@ export default function PlayPage() {
         setPhase("playing");
       }
     },
-    [questions.length, fetchQuestions]
+    [questions.length, fetchQuestions, fetchSessionState]
   );
 
   // ─── Realtime subscriptions ───────────────────────────────
@@ -347,8 +359,9 @@ export default function PlayPage() {
 
     const finalAnswer = selectedAnswerRef.current;
     const qStartedAt = questionStartedAtLocalRef.current;
+    const effectiveNowMs = Date.now() + clockSkewMsRef.current;
     const responseTimeMs = qStartedAt
-      ? Date.now() - new Date(qStartedAt).getTime()
+      ? Math.max(0, Math.round(effectiveNowMs - new Date(qStartedAt).getTime()))
       : null;
 
     const correctIdx = correctIndexesRef.current.get(question.id);
@@ -536,6 +549,7 @@ export default function PlayPage() {
         totalQuestions={questions.length}
         questionStartedAt={questionStartedAt}
         timeLimitSeconds={timeLimitSeconds}
+        clockSkewMs={clockSkewMs}
         selectedAnswer={selectedAnswer}
         disabled={answerLocked}
         onSelectAnswer={(index) => {

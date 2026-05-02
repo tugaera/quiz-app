@@ -81,6 +81,7 @@ export async function GET(
       questionStartedAt: session.question_started_at,
       timeLimitSeconds,
       alreadyAnswered,
+      serverNow: Date.now(),
     },
     error: null,
   });

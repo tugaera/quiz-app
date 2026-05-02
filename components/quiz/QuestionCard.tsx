@@ -11,6 +11,7 @@ interface QuestionCardProps {
   totalQuestions: number;
   questionStartedAt: string;
   timeLimitSeconds: number;
+  clockSkewMs?: number;
   selectedAnswer: number | null;
   disabled: boolean;
   onSelectAnswer: (index: number) => void;
@@ -23,6 +24,7 @@ export function QuestionCard({
   totalQuestions,
   questionStartedAt,
   timeLimitSeconds,
+  clockSkewMs = 0,
   selectedAnswer,
   disabled,
   onSelectAnswer,
@@ -42,6 +44,7 @@ export function QuestionCard({
       <TimerBar
         questionStartedAt={questionStartedAt}
         timeLimitSeconds={timeLimitSeconds}
+        clockSkewMs={clockSkewMs}
         onExpired={onTimerExpired}
       />
 
