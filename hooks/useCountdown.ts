@@ -50,8 +50,12 @@ export function useCountdown(
       return;
     }
 
+    // Locals for closures — TS does not narrow outer props inside nested `tick`
+    const startedAt = questionStartedAt;
+    const limitSeconds = timeLimitSeconds;
+
     // Immediately compute the real state (important for SSR → client handoff)
-    const initial = computeState(questionStartedAt, timeLimitSeconds, clockSkewMs);
+    const initial = computeState(startedAt, limitSeconds, clockSkewMs);
     setState(initial);
 
     if (initial.isExpired) return;
@@ -59,13 +63,13 @@ export function useCountdown(
     // Inner function avoids "tick used before declaration" with useCallback + rAF recursion
     function tick(): void {
       const deadline =
-        new Date(questionStartedAt!).getTime() + timeLimitSeconds! * 1000;
+        new Date(startedAt).getTime() + limitSeconds * 1000;
       const adjustedNow = Date.now() + clockSkewMs;
       const remainingMs = Math.max(0, deadline - adjustedNow);
 
       setState({
         remaining: remainingMs / 1000,
-        fraction: Math.min(1, remainingMs / (timeLimitSeconds * 1000)),
+        fraction: Math.min(1, remainingMs / (limitSeconds * 1000)),
         isExpired: remainingMs <= 0,
       });
 
